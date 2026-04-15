@@ -1,0 +1,284 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════
+   FORMA — Design System
+   Apple-inspired off-white / off-black palette
+   ═══════════════════════════════════════════════════ */
+
+/* ─── Light Mode (Primary Truth) ──────────────────── */
+[data-theme="light"] {
+  --bg-base:          #E8E8EC;     /* page background — off grey */
+  --bg-float:         #FFFFFF;     /* floating elements — white */
+  --bg-surface:       #F2F2F4;     /* cards, canvas bg */
+  --bg-elevated:      #FFFFFF;     /* toolbars, popovers, inputs */
+  --bg-hover:         #EBEBEE;     /* interactive hover */
+  --bg-active:        #E0E0E4;     /* interactive pressed */
+  --bg-panel:         #FFFFFF;     /* side panels — white */
+
+  --border:           #D5D5D8;     /* standard borders */
+  --border-subtle:    #E0E0E3;     /* dividers, faint separators */
+  --border-strong:    #B8B8BC;     /* focused elements, active selections */
+
+  --text-primary:     #1D1D1F;     /* headings, labels — Apple dark */
+  --text-secondary:   #6E6E73;     /* supporting text */
+  --text-tertiary:    #AEAEB2;     /* placeholders, metadata */
+  --text-disabled:    #C7C7CC;     /* disabled states */
+  --text-inverse:     #F5F5F7;     /* text on dark fills */
+
+  --shadow-xs:  0 0.5px 1px rgba(0,0,0,0.04), 0 0.5px 0.5px rgba(0,0,0,0.02);
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.06), 0 0.5px 1px rgba(0,0,0,0.03);
+  --shadow-md:  0 2px 8px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-lg:  0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+  --shadow-xl:  0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.04);
+  --shadow-panel: 0 0 1px rgba(0,0,0,0.04), 0 2px 12px rgba(0,0,0,0.06);
+
+  --overlay:    rgba(245,245,247,0.82);
+}
+
+/* ─── Dark Mode ───────────────────────────────────── */
+[data-theme="dark"] {
+  --bg-base:          #111113;     /* page background — deep dark */
+  --bg-float:         #1E1E21;     /* floating elements — elevated */
+  --bg-surface:       #1A1A1D;     /* cards, canvas bg */
+  --bg-elevated:      #1E1E21;     /* toolbars, popovers, inputs */
+  --bg-hover:         #2A2A2E;     /* interactive hover */
+  --bg-active:        #343438;     /* interactive pressed */
+  --bg-panel:         #1E1E21;     /* side panels — elevated */
+
+  --border:           #38383A;     /* standard borders */
+  --border-subtle:    #2C2C2E;     /* dividers */
+  --border-strong:    #545458;     /* focused, active */
+
+  --text-primary:     #F5F5F7;     /* headings — warm off-white */
+  --text-secondary:   #98989D;     /* supporting */
+  --text-tertiary:    #636366;     /* placeholders */
+  --text-disabled:    #48484A;     /* disabled */
+  --text-inverse:     #1C1C1E;     /* text on light fills */
+
+  --shadow-xs:  0 0.5px 1px rgba(0,0,0,0.20);
+  --shadow-sm:  0 1px 4px rgba(0,0,0,0.28), 0 0.5px 1px rgba(0,0,0,0.18);
+  --shadow-md:  0 2px 10px rgba(0,0,0,0.32), 0 1px 3px rgba(0,0,0,0.20);
+  --shadow-lg:  0 4px 20px rgba(0,0,0,0.40), 0 2px 6px rgba(0,0,0,0.24);
+  --shadow-xl:  0 8px 40px rgba(0,0,0,0.50), 0 4px 12px rgba(0,0,0,0.28);
+  --shadow-panel: 0 0 1px rgba(0,0,0,0.20), 0 2px 16px rgba(0,0,0,0.32);
+
+  --overlay:    rgba(28,28,30,0.86);
+}
+
+/* ─── Mark Colors — canvas only ─── */
+:root {
+  --mark-keep:           rgba(34, 197, 94, 0.65);
+  --mark-keep-stroke:    #22C55E;
+  --mark-keep-fill:      rgba(34, 197, 94, 0.08);
+  --mark-remove:         rgba(239, 68, 68, 0.65);
+  --mark-remove-stroke:  #EF4444;
+  --mark-remove-fill:    rgba(239, 68, 68, 0.08);
+  --mark-redirect:       rgba(59, 130, 246, 0.65);
+  --mark-redirect-stroke: #3B82F6;
+  --mark-redirect-fill:  rgba(59, 130, 246, 0.08);
+  --mark-keep-persisted: rgba(34, 197, 94, 0.35);
+}
+
+/* ─── Font Stack ─── */
+:root {
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+  --font-mono: 'DM Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+/* ─── Type Scale ─── */
+:root {
+  --text-xs:    11px;
+  --text-sm:    13px;
+  --text-base:  15px;
+  --text-lg:    18px;
+  --text-xl:    24px;
+  --text-2xl:   32px;
+}
+
+/* ─── Weights ─── */
+:root {
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+}
+
+/* ─── Spacing (4px base) ─── */
+:root {
+  --space-0:  0px;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+}
+
+/* ─── Radius ─── */
+:root {
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-xl:   20px;
+  --radius-full: 9999px;
+}
+
+/* ─── Easing ─── */
+:root {
+  --ease-out:     cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:      cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out:  cubic-bezier(0.45, 0, 0.55, 1);
+  --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-linear:  linear;
+}
+
+/* ─── Duration ─── */
+:root {
+  --dur-instant:  80ms;
+  --dur-fast:     120ms;
+  --dur-base:     200ms;
+  --dur-slow:     350ms;
+  --dur-xslow:    500ms;
+  --dur-crawl:    20000ms;
+}
+
+/* ─── Component Tokens ─── */
+:root {
+  --nav-height:       52px;
+  --nav-bg:           var(--bg-float);
+  --nav-border:       var(--border-subtle);
+  --toolbar-item-size: 36px;
+  --btn-height-sm:    30px;
+  --btn-height-md:    36px;
+  --btn-height-lg:    44px;
+  --strip-total-height: 112px;
+  --strip-thumb-size:   64px;
+  --strip-gap:          var(--space-2);
+  --strip-px:           var(--space-6);
+  --strip-bg:           var(--bg-float);
+  --strip-border:       var(--border-subtle);
+  --canvas-bg:          var(--bg-surface);
+  --canvas-border:      var(--border);
+  --canvas-radius:      var(--radius-xl);
+  --panel-width:        240px;
+  --panel-bg:           var(--bg-float);
+  --panel-radius:       var(--radius-lg);
+}
+
+/* ─── Base Styles ─── */
+html {
+  transition: background-color 400ms var(--ease-out);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--weight-regular);
+  color: var(--text-primary);
+  background: var(--bg-base);
+  line-height: 1.6;
+  margin: 0;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* ─── Keyframes ─── */
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spinSlow var(--dur-crawl) var(--ease-linear) infinite;
+}
+
+@keyframes pulseFade {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 0.7; }
+}
+.animate-pulse-fade {
+  animation: pulseFade 2s var(--ease-in-out) infinite;
+}
+
+/* ─── Interactive Base ─── */
+.interactive {
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow       var(--dur-fast) var(--ease-out),
+    transform        var(--dur-fast) var(--ease-out),
+    opacity          var(--dur-fast) var(--ease-out),
+    border-color     var(--dur-fast) var(--ease-out),
+    color            var(--dur-fast) var(--ease-out);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ─── Iteration Strip Scrollbar ─── */
+.iteration-strip {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.iteration-strip::-webkit-scrollbar { display: none; }
+
+/* ─── Panel scrollbar ─── */
+.panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.panel-scroll::-webkit-scrollbar        { width: 3px; }
+.panel-scroll::-webkit-scrollbar-track  { background: transparent; }
+.panel-scroll::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 2px; }
+
+/* ─── Mark Overlay ─── */
+.mark-overlay {
+  transition: opacity var(--dur-xslow) var(--ease-in-out);
+}
+
+/* ─── Direction Slider ─── */
+.direction-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  outline: none;
+  cursor: pointer;
+}
+.direction-slider:disabled { cursor: not-allowed; opacity: 0.4; }
+.direction-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  border: 2px solid var(--bg-float);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  cursor: pointer;
+}
+.direction-slider:disabled::-webkit-slider-thumb { cursor: not-allowed; }
+.direction-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  border: 2px solid var(--bg-float);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  cursor: pointer;
+}
+
+/* ─── Selection none for canvas ─── */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+}
