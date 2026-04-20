@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Session, Round, Mark, SketchData, Screen } from '@/lib/types';
+import { Session, Round, Mark, SavedSession, SketchData, Screen } from '@/lib/types';
+import { saveSession as persistSession } from '@/lib/storage';
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -14,9 +15,8 @@ function createSketchRound(): Round {
     type: 'sketch',
     imageUrl: null,
     sketchData: {
-      aspectRatio: '1:1',
+      aspectRatio: '3:2',
       shapes: [],
-      freehandPaths: [],
       textPrompt: '',
     },
     marks: [],
@@ -32,7 +32,7 @@ export function useSession() {
     activeRoundIndex: 0,
   });
 
-  const [screen, setScreen] = useState<Screen>('composer');
+  const [screen, setScreen] = useState<Screen>('library');
   const [viewingRoundIndex, setViewingRoundIndex] = useState<number | null>(null);
   const [currentMarks, setCurrentMarks] = useState<Mark[]>([]);
 
@@ -115,6 +115,58 @@ export function useSession() {
     setViewingRoundIndex(null);
   }, []);
 
+  const resetSession = useCallback(() => {
+    setSession({
+      id: generateId(),
+      rounds: [createSketchRound()],
+      activeRoundIndex: 0,
+    });
+    setCurrentMarks([]);
+    setViewingRoundIndex(null);
+  }, []);
+
+  const startNewCreation = useCallback(() => {
+    setSession({
+      id: generateId(),
+      rounds: [createSketchRound()],
+      activeRoundIndex: 0,
+    });
+    setCurrentMarks([]);
+    setViewingRoundIndex(null);
+    setScreen('composer');
+  }, []);
+
+  const resumeSavedSession = useCallback((saved: SavedSession) => {
+    setSession(saved.session);
+    setCurrentMarks([]);
+    setViewingRoundIndex(null);
+    setScreen(saved.session.activeRoundIndex === 0 ? 'composer' : 'director');
+  }, []);
+
+  const finalizeSession = useCallback(
+    (title: string): SavedSession | null => {
+      const round = session.rounds[session.activeRoundIndex];
+      if (!round || !round.imageUrl) return null;
+      const trimmed = title.trim() || 'Untitled creation';
+      const saved: SavedSession = {
+        id: session.id,
+        title: trimmed,
+        finalizedAt: Date.now(),
+        finalRoundIndex: session.activeRoundIndex,
+        thumbnailUrl: round.thumbnailUrl || round.imageUrl,
+        session,
+      };
+      persistSession(saved);
+      return saved;
+    },
+    [session]
+  );
+
+  const goToLibrary = useCallback(() => {
+    setScreen('library');
+    setViewingRoundIndex(null);
+  }, []);
+
   return {
     session,
     screen,
@@ -131,5 +183,10 @@ export function useSession() {
     goToRound,
     backToCurrent,
     restartComposition,
+    resetSession,
+    startNewCreation,
+    resumeSavedSession,
+    finalizeSession,
+    goToLibrary,
   };
 }

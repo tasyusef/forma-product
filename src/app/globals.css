@@ -17,6 +17,10 @@
   --bg-active:        #E0E0E4;     /* interactive pressed */
   --bg-panel:         #FFFFFF;     /* side panels — white */
 
+  --shape-fill:       rgba(0,0,0,0.08);    /* sketch shape fill */
+  --shape-border:     rgba(0,0,0,0.20);    /* sketch shape border */
+  --shape-stroke:     rgba(0,0,0,0.45);    /* freehand stroke */
+
   --border:           #D5D5D8;     /* standard borders */
   --border-subtle:    #E0E0E3;     /* dividers, faint separators */
   --border-strong:    #B8B8BC;     /* focused elements, active selections */
@@ -46,6 +50,10 @@
   --bg-hover:         #2A2A2E;     /* interactive hover */
   --bg-active:        #343438;     /* interactive pressed */
   --bg-panel:         #1E1E21;     /* side panels — elevated */
+
+  --shape-fill:       rgba(255,255,255,0.10);   /* sketch shape fill */
+  --shape-border:     rgba(255,255,255,0.35);   /* sketch shape border */
+  --shape-stroke:     rgba(255,255,255,0.65);   /* freehand stroke */
 
   --border:           #38383A;     /* standard borders */
   --border-subtle:    #2C2C2E;     /* dividers */

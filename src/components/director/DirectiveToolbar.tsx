@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowCounterClockwise, CircleDashed, X, ArrowRight, Eye, EyeSlash } from '@phosphor-icons/react';
-import { MarkTool } from '@/lib/types';
+import { Adjustments, MarkTool } from '@/lib/types';
 
 interface DirectiveToolbarProps {
   activeTool: MarkTool;
@@ -13,6 +12,9 @@ interface DirectiveToolbarProps {
   showAnnotated: boolean;
   onToggleView: () => void;
   canToggleView: boolean;
+  adjustments: Adjustments;
+  onAdjustmentChange: (key: keyof Adjustments, value: number) => void;
+  onResetAdjustments: () => void;
   disabled: boolean;
 }
 
@@ -22,6 +24,15 @@ const TOOL_COLORS: Record<string, { bg: string; color: string }> = {
   redirect: { bg: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6' },
 };
 
+const ADJUSTMENTS: Array<{ key: keyof Adjustments; label: string; left: string; right: string }> = [
+  { key: 'lighting', label: 'Lighting', left: 'Dark', right: 'Bright' },
+  { key: 'saturation', label: 'Saturation', left: 'Muted', right: 'Vibrant' },
+  { key: 'style', label: 'Style', left: 'Photo', right: 'Stylized' },
+  { key: 'detail', label: 'Detail', left: 'Minimal', right: 'Dense' },
+  { key: 'mood', label: 'Mood', left: 'Calm', right: 'Energetic' },
+  { key: 'contrast', label: 'Contrast', left: 'Flat', right: 'High' },
+];
+
 export default function DirectiveToolbar({
   activeTool,
   onSelectTool,
@@ -30,6 +41,9 @@ export default function DirectiveToolbar({
   showAnnotated,
   onToggleView,
   canToggleView,
+  adjustments,
+  onAdjustmentChange,
+  onResetAdjustments,
   disabled,
 }: DirectiveToolbarProps) {
   const tools: { key: MarkTool; icon: typeof CircleDashed; label: string }[] = [
@@ -37,6 +51,8 @@ export default function DirectiveToolbar({
     { key: 'remove', icon: X, label: 'Remove' },
     { key: 'redirect', icon: ArrowRight, label: 'Redirect' },
   ];
+
+  const hasAdjustments = ADJUSTMENTS.some(({ key }) => adjustments[key] !== 50);
 
   return (
     <motion.div
@@ -114,10 +130,8 @@ export default function DirectiveToolbar({
           );
         })}
 
-        {/* Divider */}
         <div style={{ height: 1, background: 'var(--border-subtle)', margin: 'var(--space-2) 0' }} />
 
-        {/* Undo */}
         <motion.button
           onClick={onUndo}
           disabled={!canUndo || disabled}
@@ -144,10 +158,8 @@ export default function DirectiveToolbar({
           <span>Undo</span>
         </motion.button>
 
-        {/* Divider */}
         <div style={{ height: 1, background: 'var(--border-subtle)', margin: 'var(--space-2) 0' }} />
 
-        {/* Compare toggle */}
         <motion.button
           onClick={onToggleView}
           disabled={!canToggleView || disabled}
@@ -175,11 +187,15 @@ export default function DirectiveToolbar({
         </motion.button>
       </div>
 
-      {/* Sliders section */}
+      {/* Adjustments header */}
       <div
         style={{
           borderTop: '1px solid var(--border-subtle)',
           padding: 'var(--space-4) var(--space-4) var(--space-3)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 'var(--space-2)',
         }}
       >
         <span
@@ -193,7 +209,29 @@ export default function DirectiveToolbar({
         >
           Adjustments
         </span>
+        {hasAdjustments && !disabled && (
+          <motion.button
+            onClick={onResetAdjustments}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            style={{
+              background: 'transparent',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '2px 8px',
+              fontSize: 10,
+              color: 'var(--text-secondary)',
+              fontFamily: 'var(--font-sans)',
+              cursor: 'pointer',
+              height: 22,
+            }}
+            title="Return all sliders to neutral"
+          >
+            Reset
+          </motion.button>
+        )}
       </div>
+
       <div
         className="panel-scroll"
         style={{
@@ -205,12 +243,17 @@ export default function DirectiveToolbar({
           gap: 'var(--space-4)',
         }}
       >
-        <DirectionSlider label="Lighting" left="Dark" right="Bright" disabled={disabled} />
-        <DirectionSlider label="Saturation" left="Muted" right="Vibrant" disabled={disabled} />
-        <DirectionSlider label="Style" left="Photo" right="Stylized" disabled={disabled} />
-        <DirectionSlider label="Detail" left="Minimal" right="Dense" disabled={disabled} />
-        <DirectionSlider label="Mood" left="Calm" right="Energetic" disabled={disabled} />
-        <DirectionSlider label="Contrast" left="Flat" right="High" disabled={disabled} />
+        {ADJUSTMENTS.map(({ key, label, left, right }) => (
+          <DirectionSlider
+            key={key}
+            label={label}
+            left={left}
+            right={right}
+            value={adjustments[key]}
+            onChange={(v) => onAdjustmentChange(key, v)}
+            disabled={disabled}
+          />
+        ))}
       </div>
     </motion.div>
   );
@@ -220,15 +263,18 @@ function DirectionSlider({
   label,
   left,
   right,
+  value,
+  onChange,
   disabled,
 }: {
   label: string;
   left: string;
   right: string;
+  value: number;
+  onChange: (value: number) => void;
   disabled: boolean;
 }) {
-  const [value, setValue] = useState(50);
-
+  const isNeutral = value === 50;
   return (
     <div style={{ opacity: disabled ? 0.4 : 1 }}>
       <div
@@ -251,7 +297,7 @@ function DirectionSlider({
         <span
           style={{
             fontSize: 'var(--text-xs)',
-            color: 'var(--text-tertiary)',
+            color: isNeutral ? 'var(--text-tertiary)' : 'var(--text-primary)',
             fontFamily: 'var(--font-mono)',
           }}
         >
@@ -263,7 +309,7 @@ function DirectionSlider({
         min={0}
         max={100}
         value={value}
-        onChange={(e) => setValue(Number(e.target.value))}
+        onChange={(e) => onChange(Number(e.target.value))}
         disabled={disabled}
         className="direction-slider"
       />

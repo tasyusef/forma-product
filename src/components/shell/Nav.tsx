@@ -1,17 +1,16 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sun, Moon, CaretLeft } from '@phosphor-icons/react';
+import { CaretLeft } from '@phosphor-icons/react';
 
 interface NavProps {
   roundLabel: string;
   theme: 'light' | 'dark';
-  onToggleTheme: () => void;
   showBack: boolean;
   onBack: () => void;
 }
 
-export default function Nav({ roundLabel, theme, onToggleTheme, showBack, onBack }: NavProps) {
+export default function Nav({ roundLabel, theme, showBack, onBack }: NavProps) {
   return (
     <nav
       style={{
@@ -91,41 +90,8 @@ export default function Nav({ roundLabel, theme, onToggleTheme, showBack, onBack
         </motion.span>
       </AnimatePresence>
 
-      {/* Right: theme toggle */}
-      <div style={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end' }}>
-        <motion.button
-          onClick={onToggleTheme}
-          whileHover={{ scale: 1.08 }}
-          whileTap={{ scale: 0.92 }}
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 'var(--radius-full)',
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            boxShadow: 'var(--shadow-xs)',
-          }}
-          title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-        >
-          <AnimatePresence mode="wait">
-            <motion.span
-              key={theme}
-              initial={{ opacity: 0, rotate: -30, scale: 0.8 }}
-              animate={{ opacity: 1, rotate: 0, scale: 1 }}
-              exit={{ opacity: 0, rotate: 30, scale: 0.8 }}
-              transition={{ duration: 0.2 }}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-              {theme === 'light' ? <Sun size={16} weight="regular" /> : <Moon size={16} weight="regular" />}
-            </motion.span>
-          </AnimatePresence>
-        </motion.button>
-      </div>
+      {/* Right: balance spacer — matches left panel width so center label stays perfectly centered */}
+      <div style={{ minWidth: 120 }} />
     </nav>
   );
 }

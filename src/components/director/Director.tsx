@@ -2,10 +2,12 @@
 
 import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Mark, MarkTool } from '@/lib/types';
+import { Adjustments, Mark, MarkTool, NEUTRAL_ADJUSTMENTS } from '@/lib/types';
 import DirectiveToolbar from './DirectiveToolbar';
 import DirectorCanvas from './DirectorCanvas';
 import RefineBar from './RefineBar';
+import RefinePromptPanel from './RefinePromptPanel';
+import { useRefineInterpretation } from '@/hooks/useRefineInterpretation';
 import type { Round } from '@/lib/types';
 
 interface DirectorProps {
@@ -13,8 +15,10 @@ interface DirectorProps {
   roundIndex: number;
   currentMarks: Mark[];
   onUpdateMarks: (marks: Mark[]) => void;
-  onRefine: (marks: Mark[]) => void;
+  onRefine: (marks: Mark[], refinePrompt: string) => void;
   onRestart: () => void;
+  onFinish: () => void;
+  onDownload: () => void;
   previousRoundMarks: Mark[];
   persistedKeepMarks: Mark[];
   readOnly: boolean;
@@ -27,6 +31,8 @@ export default function Director({
   onUpdateMarks,
   onRefine,
   onRestart,
+  onFinish,
+  onDownload,
   previousRoundMarks,
   persistedKeepMarks,
   readOnly,
@@ -34,6 +40,13 @@ export default function Director({
   const [activeTool, setActiveTool] = useState<MarkTool>(null);
   const [showAnnotated, setShowAnnotated] = useState(false);
   const [undoStack, setUndoStack] = useState<Mark[][]>([]);
+  const [adjustments, setAdjustments] = useState<Adjustments>(NEUTRAL_ADJUSTMENTS);
+
+  const refineInterpretation = useRefineInterpretation({
+    masterPrompt: round.prompt || '',
+    marks: currentMarks,
+    adjustments,
+  });
 
   const canToggleView = roundIndex > 1 && previousRoundMarks.length > 0;
 
@@ -60,11 +73,11 @@ export default function Director({
   );
 
   const handleRefine = useCallback(() => {
-    onRefine(currentMarks);
+    onRefine(currentMarks, refineInterpretation.refinePrompt);
     setActiveTool(null);
     setShowAnnotated(false);
     setUndoStack([]);
-  }, [currentMarks, onRefine]);
+  }, [currentMarks, refineInterpretation.refinePrompt, onRefine]);
 
   if (!round.imageUrl) return null;
 
@@ -99,11 +112,28 @@ export default function Director({
         />
 
         {!readOnly && (
-          <RefineBar
-            canRefine={currentMarks.length > 0}
-            onRefine={handleRefine}
-            onRestart={onRestart}
-          />
+          <>
+            <RefinePromptPanel
+              refinePrompt={refineInterpretation.refinePrompt}
+              isInterpreting={refineInterpretation.isInterpreting}
+              editedByUser={refineInterpretation.editedByUser}
+              isEmpty={refineInterpretation.isEmpty}
+              onEdit={refineInterpretation.onEdit}
+              onRefresh={refineInterpretation.onRefresh}
+            />
+            <RefineBar
+              canRefine={
+                !refineInterpretation.isEmpty &&
+                !refineInterpretation.isInterpreting &&
+                refineInterpretation.refinePrompt.trim().length > 0
+              }
+              canFinish={Boolean(round.imageUrl)}
+              onRefine={handleRefine}
+              onRestart={onRestart}
+              onFinish={onFinish}
+              onDownload={onDownload}
+            />
+          </>
         )}
       </motion.div>
 
@@ -119,6 +149,11 @@ export default function Director({
         showAnnotated={showAnnotated}
         onToggleView={() => setShowAnnotated(!showAnnotated)}
         canToggleView={canToggleView}
+        adjustments={adjustments}
+        onAdjustmentChange={(key, value) =>
+          setAdjustments((prev) => ({ ...prev, [key]: value }))
+        }
+        onResetAdjustments={() => setAdjustments(NEUTRAL_ADJUSTMENTS)}
         disabled={readOnly}
       />
     </div>

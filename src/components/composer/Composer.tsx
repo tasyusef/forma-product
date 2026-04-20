@@ -1,12 +1,22 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { SketchShape, AspectRatio, SketchData } from '@/lib/types';
+import { SketchShape, SketchData } from '@/lib/types';
 import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import ComposerCanvas from './ComposerCanvas';
 import ShapeTray from './ShapeTray';
 import LayerPanel from './LayerPanel';
+import InterpretationPanel from './InterpretationPanel';
+
+interface InterpretationState {
+  masterPrompt: string;
+  isInterpreting: boolean;
+  editedByUser: boolean;
+  isEmpty: boolean;
+  onEdit: (value: string) => void;
+  onRefresh: () => void;
+}
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -16,14 +26,73 @@ interface ComposerProps {
   sketchData: SketchData;
   onUpdateSketch: (data: Partial<SketchData>) => void;
   onGenerate: (prompt: string) => void;
+  interpretation: InterpretationState;
 }
 
-const ASPECT_OPTIONS: AspectRatio[] = ['1:1', '3:2', '16:9', '9:16'];
-
-export default function Composer({ sketchData, onUpdateSketch, onGenerate }: ComposerProps) {
+export default function Composer({ sketchData, onUpdateSketch, onGenerate, interpretation }: ComposerProps) {
   const [drawMode, setDrawMode] = useState(false);
   const [prompt, setPrompt] = useState(sketchData.textPrompt);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Keep a ref to the latest sketch so async callbacks (e.g. the merge API
+  // response) can merge into current state instead of a stale closure.
+  const sketchDataRef = useRef(sketchData);
+  useEffect(() => {
+    sketchDataRef.current = sketchData;
+  }, [sketchData]);
+
+  // Tracks group IDs whose merge API call is already in flight — prevents
+  // double-firing when the effect re-runs.
+  const mergingGroupIdsRef = useRef<Set<string>>(new Set());
+
+  // Watch for groups flagged isMerging and fire the Claude merge call.
+  useEffect(() => {
+    const pending = sketchData.shapes.filter(
+      (s) => s.type === 'group' && s.isMerging && !mergingGroupIdsRef.current.has(s.id)
+    );
+    if (pending.length === 0) return;
+
+    for (const group of pending) {
+      mergingGroupIdsRef.current.add(group.id);
+
+      const memberPrompts = group.memberPrompts || {};
+      const promptValues = Object.values(memberPrompts).filter((p) => p && p.trim().length > 0);
+      const memberLabels = (group.memberIds || [])
+        .map((id) => sketchData.shapes.find((s) => s.id === id)?.label || '')
+        .filter((l) => l.trim().length > 0);
+
+      (async () => {
+        try {
+          const res = await fetch('/api/interpret/merge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ memberPrompts: promptValues, memberLabels }),
+          });
+          const data = (await res.json()) as { merged?: string; error?: string };
+          const merged = data.merged?.trim() || promptValues.join('; ') || memberLabels.join(', ');
+
+          const latest = sketchDataRef.current.shapes;
+          onUpdateSketch({
+            shapes: latest.map((s) =>
+              s.id === group.id ? { ...s, prompt: merged, isMerging: false } : s
+            ),
+          });
+        } catch {
+          // Fallback: naive join so the group still has something usable.
+          const fallback = promptValues.join('; ') || memberLabels.join(', ');
+          const latest = sketchDataRef.current.shapes;
+          onUpdateSketch({
+            shapes: latest.map((s) =>
+              s.id === group.id ? { ...s, prompt: fallback, isMerging: false } : s
+            ),
+          });
+        } finally {
+          mergingGroupIdsRef.current.delete(group.id);
+        }
+      })();
+    }
+  }, [sketchData.shapes, onUpdateSketch]);
 
   const handleAddShape = useCallback(
     (type: SketchShape['type']) => {
@@ -37,24 +106,94 @@ export default function Composer({ sketchData, onUpdateSketch, onGenerate }: Com
         label: '',
       };
       onUpdateSketch({ shapes: [...sketchData.shapes, newShape] });
+      setSelectedIds([newShape.id]);
       setDrawMode(false);
     },
     [sketchData.shapes, onUpdateSketch]
   );
 
-  const canGenerate = sketchData.shapes.length > 0 || sketchData.freehandPaths.length > 0 || prompt.trim().length > 0;
+  const handleCombineShapes = useCallback(
+    (ids: string[]) => {
+      if (ids.length < 2) return;
+      const members = sketchData.shapes.filter((s) => ids.includes(s.id));
+      if (members.length < 2) return;
+
+      // Compute combined bounding box.
+      const minX = Math.min(...members.map((s) => s.x));
+      const minY = Math.min(...members.map((s) => s.y));
+      const maxX = Math.max(...members.map((s) => s.x + s.width));
+      const maxY = Math.max(...members.map((s) => s.y + s.height));
+
+      // Insertion index = position of the topmost (last) member in the original array.
+      const lastIndex = Math.max(...members.map((s) => sketchData.shapes.findIndex((x) => x.id === s.id)));
+
+      // Snapshot each member's prompt so ungroup can restore them.
+      // Phase 3 will call /api/interpret/merge here to populate groupShape.prompt.
+      const memberPrompts: Record<string, string> = {};
+      for (const m of members) {
+        if (m.prompt && m.prompt.trim().length > 0) memberPrompts[m.id] = m.prompt;
+      }
+
+      // Only mark isMerging when there's something to merge — i.e. at least
+      // one member had a prompt. Otherwise the effect would waste an API call.
+      const hasPromptsToMerge = Object.keys(memberPrompts).length > 0;
+
+      const groupShape: SketchShape = {
+        id: generateId(),
+        type: 'group',
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+        label: `Group (${members.length})`,
+        memberIds: members.map((m) => m.id),
+        memberPrompts,
+        isMerging: hasPromptsToMerge,
+      };
+
+      const remaining = sketchData.shapes.filter((s) => !ids.includes(s.id));
+      // Clamp insertion index to remaining array length.
+      const insertAt = Math.min(lastIndex - (members.length - 1), remaining.length);
+      const next = [
+        ...remaining.slice(0, Math.max(0, insertAt)),
+        groupShape,
+        ...remaining.slice(Math.max(0, insertAt)),
+      ];
+      onUpdateSketch({ shapes: next });
+    },
+    [sketchData.shapes, onUpdateSketch]
+  );
+
+  const hasComposed = interpretation.masterPrompt.trim().length > 0;
+  const canGenerate =
+    !interpretation.isInterpreting &&
+    (hasComposed || prompt.trim().length > 0);
+
+  const handleGenerateClick = useCallback(() => {
+    // Prefer the editable master prompt; fall back to the global prompt
+    // when no sketch has been interpreted yet.
+    const composed = interpretation.masterPrompt.trim();
+    onGenerate(composed || prompt);
+  }, [interpretation.masterPrompt, prompt, onGenerate]);
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden', gap: 'var(--space-2)' }}>
       {/* Left panel — Layers */}
       <LayerPanel
         shapes={sketchData.shapes}
-        freehandPaths={sketchData.freehandPaths}
+        selectedIds={selectedIds}
         onReorderShapes={(shapes) => onUpdateSketch({ shapes })}
-        onDeleteShape={(id) => onUpdateSketch({ shapes: sketchData.shapes.filter((s) => s.id !== id) })}
-        onDeleteFreehand={(i) =>
-          onUpdateSketch({ freehandPaths: sketchData.freehandPaths.filter((_, idx) => idx !== i) })
+        onDeleteShape={(id) => {
+          onUpdateSketch({ shapes: sketchData.shapes.filter((s) => s.id !== id) });
+          setSelectedIds((prev) => prev.filter((s) => s !== id));
+        }}
+        onUpdateShape={(id, patch) =>
+          onUpdateSketch({
+            shapes: sketchData.shapes.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+          })
         }
+        onSetSelectedIds={setSelectedIds}
+        onCombineShapes={handleCombineShapes}
       />
 
       {/* Center — Canvas area */}
@@ -73,88 +212,69 @@ export default function Composer({ sketchData, onUpdateSketch, onGenerate }: Com
           overflow: 'hidden',
         }}
       >
-        {/* Toolbar: undo/redo + aspect ratio selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          {/* Back / Forward */}
-          <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
-            <motion.button
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.92 }}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--bg-elevated)',
-                border: '1px solid var(--border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--text-secondary)',
-                cursor: 'pointer',
-                boxShadow: 'var(--shadow-xs)',
-              }}
-              title="Undo"
-            >
-              <CaretLeft size={14} weight="bold" />
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.92 }}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--bg-elevated)',
-                border: '1px solid var(--border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--text-secondary)',
-                cursor: 'pointer',
-                boxShadow: 'var(--shadow-xs)',
-              }}
-              title="Redo"
-            >
-              <CaretRight size={14} weight="bold" />
-            </motion.button>
-          </div>
-
-          {/* Aspect ratio selector — right aligned */}
-          <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-1)' }}>
-            {ASPECT_OPTIONS.map((ar) => (
-              <motion.button
-                key={ar}
-                onClick={() => onUpdateSketch({ aspectRatio: ar })}
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.96 }}
-                style={{
-                  padding: 'var(--space-1) var(--space-3)',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: sketchData.aspectRatio === ar ? 'var(--weight-semibold)' : 'var(--weight-regular)',
-                  color: sketchData.aspectRatio === ar ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                  background: sketchData.aspectRatio === ar ? 'var(--bg-elevated)' : 'transparent',
-                  border: 'none',
-                  borderRadius: 'var(--radius-sm)',
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-sans)',
-                  boxShadow: sketchData.aspectRatio === ar ? 'var(--shadow-xs)' : 'none',
-                }}
-              >
-                {ar}
-              </motion.button>
-            ))}
-          </div>
+        {/* Toolbar: undo/redo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+          <motion.button
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.92 }}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              boxShadow: 'var(--shadow-xs)',
+            }}
+            title="Undo"
+          >
+            <CaretLeft size={14} weight="bold" />
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.92 }}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              boxShadow: 'var(--shadow-xs)',
+            }}
+            title="Redo"
+          >
+            <CaretRight size={14} weight="bold" />
+          </motion.button>
         </div>
 
         {/* Canvas */}
         <ComposerCanvas
           aspectRatio={sketchData.aspectRatio}
           shapes={sketchData.shapes}
-          freehandPaths={sketchData.freehandPaths}
           drawMode={drawMode}
+          selectedIds={selectedIds}
           onUpdateShapes={(shapes) => onUpdateSketch({ shapes })}
-          onUpdateFreehand={(paths) => onUpdateSketch({ freehandPaths: paths })}
+          onSetSelectedIds={setSelectedIds}
           canvasRef={canvasRef}
+        />
+
+        {/* Interpretation panel — live master prompt, editable */}
+        <InterpretationPanel
+          masterPrompt={interpretation.masterPrompt}
+          isInterpreting={interpretation.isInterpreting}
+          editedByUser={interpretation.editedByUser}
+          isEmpty={interpretation.isEmpty}
+          onEdit={interpretation.onEdit}
+          onRefresh={interpretation.onRefresh}
         />
 
         {/* Bottom bar: prompt + generate */}
@@ -181,11 +301,11 @@ export default function Composer({ sketchData, onUpdateSketch, onGenerate }: Com
               boxShadow: 'var(--shadow-xs)',
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && canGenerate) onGenerate(prompt);
+              if (e.key === 'Enter' && canGenerate) handleGenerateClick();
             }}
           />
           <motion.button
-            onClick={() => onGenerate(prompt)}
+            onClick={handleGenerateClick}
             disabled={!canGenerate}
             whileHover={canGenerate ? { scale: 1.02, y: -1 } : undefined}
             whileTap={canGenerate ? { scale: 0.98 } : undefined}

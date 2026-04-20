@@ -8,8 +8,13 @@ interface ShapeBlockProps {
   shape: SketchShape;
   canvasWidth: number;
   canvasHeight: number;
+  isSelected: boolean;
   onUpdate: (shape: SketchShape) => void;
   onDelete: (id: string) => void;
+  onSelect: (
+    id: string,
+    opts: { alt: boolean; shift: boolean; clientX: number; clientY: number }
+  ) => void;
 }
 
 const MIN_SIZE = 0.05;
@@ -23,16 +28,30 @@ const HANDLE_CURSORS: Record<Corner, string> = {
   se: 'nwse-resize',
 };
 
+// Visual dot size vs the transparent hit zone wrapping it. The hit zone is
+// centered on each corner so it pokes halfway outside the shape — easier to
+// grab and less likely to be fully covered by an overlapping shape.
+const HANDLE_DOT = 8;
+const HANDLE_HIT = 20;
+const HANDLE_OFFSET = -HANDLE_HIT / 2;
+
 const HANDLE_POSITIONS: Record<Corner, React.CSSProperties> = {
-  nw: { top: -4, left: -4 },
-  ne: { top: -4, right: -4 },
-  sw: { bottom: -4, left: -4 },
-  se: { bottom: -4, right: -4 },
+  nw: { top: HANDLE_OFFSET, left: HANDLE_OFFSET },
+  ne: { top: HANDLE_OFFSET, right: HANDLE_OFFSET },
+  sw: { bottom: HANDLE_OFFSET, left: HANDLE_OFFSET },
+  se: { bottom: HANDLE_OFFSET, right: HANDLE_OFFSET },
 };
 
-export default function ShapeBlock({ shape, canvasWidth, canvasHeight, onUpdate, onDelete }: ShapeBlockProps) {
+export default function ShapeBlock({
+  shape,
+  canvasWidth,
+  canvasHeight,
+  isSelected,
+  onUpdate,
+  onDelete,
+  onSelect,
+}: ShapeBlockProps) {
   const [isHovered, setIsHovered] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, shapeX: 0, shapeY: 0, shapeW: 0, shapeH: 0 });
@@ -41,6 +60,14 @@ export default function ShapeBlock({ shape, canvasWidth, canvasHeight, onUpdate,
     (e: React.MouseEvent) => {
       if (isResizing) return;
       e.stopPropagation();
+      onSelect(shape.id, {
+        alt: e.altKey,
+        shift: e.shiftKey,
+        clientX: e.clientX,
+        clientY: e.clientY,
+      });
+      // Alt-click only cycles selection; don't start a drag.
+      if (e.altKey) return;
       setIsDragging(true);
       dragStart.current = {
         x: e.clientX,
@@ -54,10 +81,16 @@ export default function ShapeBlock({ shape, canvasWidth, canvasHeight, onUpdate,
       const handleMove = (me: MouseEvent) => {
         const dx = (me.clientX - dragStart.current.x) / canvasWidth;
         const dy = (me.clientY - dragStart.current.y) / canvasHeight;
+        // Allow shapes to extend off-canvas, but keep at least 10% visible so
+        // the user can always grab them back.
+        const minX = -shape.width + 0.1;
+        const maxX = 0.9;
+        const minY = -shape.height + 0.1;
+        const maxY = 0.9;
         onUpdate({
           ...shape,
-          x: Math.max(0, Math.min(1 - shape.width, dragStart.current.shapeX + dx)),
-          y: Math.max(0, Math.min(1 - shape.height, dragStart.current.shapeY + dy)),
+          x: Math.max(minX, Math.min(maxX, dragStart.current.shapeX + dx)),
+          y: Math.max(minY, Math.min(maxY, dragStart.current.shapeY + dy)),
         });
       };
 
@@ -70,7 +103,7 @@ export default function ShapeBlock({ shape, canvasWidth, canvasHeight, onUpdate,
       window.addEventListener('mousemove', handleMove);
       window.addEventListener('mouseup', handleUp);
     },
-    [shape, canvasWidth, canvasHeight, onUpdate, isResizing]
+    [shape, canvasWidth, canvasHeight, onUpdate, onSelect, isResizing]
   );
 
   const handleResizeDown = useCallback(
@@ -112,8 +145,9 @@ export default function ShapeBlock({ shape, canvasWidth, canvasHeight, onUpdate,
           newY = shapeY + shapeH - newH;
         }
 
-        newX = Math.max(0, Math.min(1 - MIN_SIZE, newX));
-        newY = Math.max(0, Math.min(1 - MIN_SIZE, newY));
+        // Off-canvas allowed; keep at least MIN_SIZE of the shape visible.
+        newX = Math.max(-newW + MIN_SIZE, Math.min(1 - MIN_SIZE, newX));
+        newY = Math.max(-newH + MIN_SIZE, Math.min(1 - MIN_SIZE, newY));
 
         onUpdate({ ...shape, x: newX, y: newY, width: newW, height: newH });
       };
@@ -132,6 +166,8 @@ export default function ShapeBlock({ shape, canvasWidth, canvasHeight, onUpdate,
 
   const figureClip = 'polygon(50% 0%, 65% 0%, 72% 8%, 72% 22%, 65% 30%, 58% 30%, 80% 38%, 85% 45%, 85% 55%, 100% 58%, 100% 70%, 85% 70%, 85% 100%, 62% 100%, 62% 55%, 55% 45%, 45% 45%, 38% 55%, 38% 100%, 15% 100%, 15% 70%, 0% 70%, 0% 58%, 15% 55%, 15% 45%, 20% 38%, 42% 30%, 35% 30%, 28% 22%, 28% 8%, 35% 0%)';
 
+  const showAffordances = isHovered || isSelected || isDragging || isResizing;
+
   return (
     <div
       style={{
@@ -141,6 +177,9 @@ export default function ShapeBlock({ shape, canvasWidth, canvasHeight, onUpdate,
         width: shape.width * canvasWidth,
         height: shape.height * canvasHeight,
         userSelect: 'none',
+        // Lift the active shape above its overlapping siblings so its handles
+        // are reachable even when another shape sits on top in DOM order.
+        zIndex: showAffordances ? 2 : 1,
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -148,27 +187,25 @@ export default function ShapeBlock({ shape, canvasWidth, canvasHeight, onUpdate,
       {/* Visual shape */}
       <div
         onMouseDown={handleMouseDown}
-        onDoubleClick={(e) => {
-          e.stopPropagation();
-          setIsEditing(true);
-        }}
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'rgba(0,0,0,0.08)',
-          border: '1.5px solid rgba(0,0,0,0.15)',
+          background: 'var(--shape-fill)',
+          borderWidth: 1.5,
+          borderColor: isSelected ? 'var(--text-primary)' : 'var(--shape-border)',
+          borderStyle: shape.type === 'group' ? 'dashed' : 'solid',
           cursor: isDragging ? 'grabbing' : 'grab',
-          borderRadius: shape.type === 'ellipse' ? '50%' : shape.type === 'figure' ? '40% 40% 5% 5% / 20% 20% 5% 5%' : 'var(--radius-sm)',
+          borderRadius: shape.type === 'ellipse' ? '50%' : shape.type === 'figure' ? '40% 40% 5% 5% / 20% 20% 5% 5%' : 'var(--radius-md)',
           clipPath: shape.type === 'figure' ? figureClip : undefined,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          transition: isDragging || isResizing ? 'none' : 'box-shadow 120ms var(--ease-out)',
-          boxShadow: isHovered ? 'var(--shadow-sm)' : 'none',
+          transition: isDragging || isResizing ? 'none' : 'box-shadow 120ms var(--ease-out), border-color 120ms var(--ease-out)',
+          boxShadow: isSelected || isHovered ? 'var(--shadow-sm)' : 'none',
         }}
       >
-        {/* Label */}
-        {shape.label && !isEditing && (
+        {/* Label — display-only on the shape; editing happens in the LayerPanel */}
+        {shape.label && (
           <span
             style={{
               fontSize: 'var(--text-xs)',
@@ -186,42 +223,10 @@ export default function ShapeBlock({ shape, canvasWidth, canvasHeight, onUpdate,
             {shape.label}
           </span>
         )}
-
-        {/* Inline label edit */}
-        {isEditing && (
-          <input
-            autoFocus
-            defaultValue={shape.label}
-            placeholder="What is this?"
-            onBlur={(e) => {
-              onUpdate({ ...shape, label: e.target.value });
-              setIsEditing(false);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                onUpdate({ ...shape, label: (e.target as HTMLInputElement).value });
-                setIsEditing(false);
-              }
-            }}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            style={{
-              fontSize: 'var(--text-xs)',
-              background: 'var(--bg-base)',
-              border: '1px solid var(--border-strong)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '2px 6px',
-              width: '80%',
-              textAlign: 'center',
-              color: 'var(--text-primary)',
-              outline: 'none',
-            }}
-          />
-        )}
       </div>
 
-      {/* Delete button */}
-      {isHovered && (
+      {/* Delete button — centered so it doesn't collide with resize handles */}
+      {showAffordances && (
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -230,28 +235,31 @@ export default function ShapeBlock({ shape, canvasWidth, canvasHeight, onUpdate,
           onMouseDown={(e) => e.stopPropagation()}
           style={{
             position: 'absolute',
-            top: -6,
-            right: -6,
-            width: 18,
-            height: 18,
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 22,
+            height: 22,
             borderRadius: 'var(--radius-full)',
             background: 'var(--text-primary)',
             color: 'var(--text-inverse)',
-            border: 'none',
+            border: '2px solid var(--bg-float)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
             padding: 0,
             zIndex: 2,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
           }}
+          title="Delete"
         >
-          <X size={12} weight="regular" />
+          <X size={12} weight="bold" />
         </button>
       )}
 
       {/* Resize handles */}
-      {isHovered && !isEditing && (
+      {showAffordances && (
         <>
           {(['nw', 'ne', 'sw', 'se'] as Corner[]).map((corner) => (
             <div
@@ -260,16 +268,27 @@ export default function ShapeBlock({ shape, canvasWidth, canvasHeight, onUpdate,
               style={{
                 position: 'absolute',
                 ...HANDLE_POSITIONS[corner],
-                width: 8,
-                height: 8,
-                borderRadius: 'var(--radius-full)',
-                background: '#FFFFFF',
-                border: '1.5px solid rgba(0,0,0,0.3)',
+                width: HANDLE_HIT,
+                height: HANDLE_HIT,
                 cursor: HANDLE_CURSORS[corner],
-                zIndex: 2,
-                boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                zIndex: 3,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
-            />
+            >
+              <div
+                style={{
+                  width: HANDLE_DOT,
+                  height: HANDLE_DOT,
+                  borderRadius: 'var(--radius-full)',
+                  background: '#FFFFFF',
+                  border: '1.5px solid rgba(0,0,0,0.3)',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                  pointerEvents: 'none',
+                }}
+              />
+            </div>
           ))}
         </>
       )}
