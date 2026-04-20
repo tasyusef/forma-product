@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
 
 export const runtime = 'nodejs';
+// Same story as /api/generate — Fal inpaint calls can take 30s-5min on cold
+// boots. Hobby caps at 300s; bump to 600 on Pro+.
+export const maxDuration = 300;
 
 fal.config({ credentials: process.env.FAL_KEY });
 

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
 
 export const runtime = 'nodejs';
+// Vercel Hobby's 10s default would 504 every cold Fal boot (observed 30s-5min).
+// 300s is the Hobby cap; bump to 600 on Pro+ for more headroom.
+export const maxDuration = 300;
 
 fal.config({ credentials: process.env.FAL_KEY });
 
