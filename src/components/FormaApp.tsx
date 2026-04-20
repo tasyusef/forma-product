@@ -13,7 +13,7 @@ import Nav from './shell/Nav';
 import IterationStrip from './shell/IterationStrip';
 import ToastStack from './shell/ToastStack';
 import Composer from './composer/Composer';
-import GenerationLoader from './loading/GenerationLoader';
+import GenerationLoader, { LoadingKind } from './loading/GenerationLoader';
 import Director from './director/Director';
 import HistoryBanner from './history/HistoryBanner';
 import Library from './library/Library';
@@ -46,6 +46,14 @@ export default function FormaApp() {
   useEffect(() => {
     if (screen === 'library') setSavedSessions(loadAllSavedSessions());
   }, [screen]);
+
+  // Which backend path is running while screen === 'loading'. Lets the
+  // loader show copy and pacing that matches reality for that path.
+  const [loadingKind, setLoadingKind] = useState<LoadingKind>('generate-sketch');
+
+  // Hard cap on how long we'll wait for a generation/refine before giving up.
+  // Fal's ControlNet path spikes to ~150s on cold start; we allow up to 3 min.
+  const GEN_TIMEOUT_MS = 180_000;
 
   // Interpretation state lives here (not inside Composer) so navigating to
   // Director and back doesn't wipe the composed master prompt or the user's
@@ -90,19 +98,25 @@ export default function FormaApp() {
 
   const handleGenerate = useCallback(
     async (prompt: string) => {
+      const sketchData = session.rounds[0]?.sketchData;
+      const hasSketch = Boolean(sketchData && sketchData.shapes.length > 0);
+      setLoadingKind(hasSketch ? 'generate-sketch' : 'generate-fast');
       setScreen('loading');
+
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(() => controller.abort(), GEN_TIMEOUT_MS);
+
       try {
         // Rasterize the sketch as a ControlNet canny signal so composition
         // lands where the user placed it. Empty sketch → no control image,
         // server falls back to pure text-to-image.
-        const sketchData = session.rounds[0]?.sketchData;
-        const hasSketch = sketchData && sketchData.shapes.length > 0;
         const sketchImage = hasSketch ? rasterizeSketch(sketchData!, 1024, 688) : undefined;
 
         const res = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt, sketchImage }),
+          signal: controller.signal,
         });
         const data = (await res.json()) as { imageUrl?: string; error?: string };
         if (!res.ok || !data.imageUrl) {
@@ -114,7 +128,13 @@ export default function FormaApp() {
       } catch (err) {
         console.error('generate failed', err);
         setScreen('composer');
-        toastError(err instanceof Error ? err.message : 'Generation failed — try again');
+        const aborted = controller.signal.aborted;
+        const message = aborted
+          ? 'Generation timed out — the model is queued. Try again in a moment.'
+          : err instanceof Error ? err.message : 'Generation failed — try again';
+        toastError(message);
+      } finally {
+        clearTimeout(timeoutHandle);
       }
     },
     [setScreen, addGenerationRound, session.rounds, toastSuccess, toastError]
@@ -122,7 +142,10 @@ export default function FormaApp() {
 
   const handleRefine = useCallback(
     async (marks: Mark[], refinePrompt: string) => {
+      setLoadingKind('refine');
       setScreen('loading');
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(() => controller.abort(), GEN_TIMEOUT_MS);
       try {
         const current = session.rounds[session.activeRoundIndex];
         if (!current || !current.imageUrl) throw new Error('no current image to refine');
@@ -160,6 +183,7 @@ export default function FormaApp() {
             prompt: refinePrompt,
             strength: 0.9,
           }),
+          signal: controller.signal,
         });
         const refineData = (await refineRes.json()) as { imageUrl?: string; error?: string };
         if (!refineRes.ok || !refineData.imageUrl) {
@@ -184,7 +208,13 @@ export default function FormaApp() {
       } catch (err) {
         console.error('refine failed', err);
         setScreen('director');
-        toastError(err instanceof Error ? err.message : 'Refine failed — try again');
+        const aborted = controller.signal.aborted;
+        const message = aborted
+          ? 'Refine timed out — the model is queued. Try again in a moment.'
+          : err instanceof Error ? err.message : 'Refine failed — try again';
+        toastError(message);
+      } finally {
+        clearTimeout(timeoutHandle);
       }
     },
     [setScreen, session, addGenerationRound, toastSuccess, toastError]
@@ -272,6 +302,7 @@ export default function FormaApp() {
           flexDirection: 'column',
           minHeight: 0,
           position: 'relative',
+          overflow: 'hidden',
         }}
       >
         {/* History banner */}
@@ -302,7 +333,7 @@ export default function FormaApp() {
           />
         )}
 
-        {screen === 'loading' && <GenerationLoader theme={theme} />}
+        {screen === 'loading' && <GenerationLoader theme={theme} kind={loadingKind} />}
 
         {screen === 'director' && displayRound && displayRound.imageUrl && (
           <Director

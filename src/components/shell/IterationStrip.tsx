@@ -34,7 +34,6 @@ export default function IterationStrip({ rounds, activeRoundIndex, onSelectRound
         alignItems: 'center',
         flexShrink: 0,
         position: 'relative',
-        zIndex: 30,
       }}
     >
       <div

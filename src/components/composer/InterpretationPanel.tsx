@@ -35,6 +35,10 @@ export default function InterpretationPanel({
         flexDirection: 'column',
         gap: 'var(--space-2)',
         boxShadow: 'var(--shadow-sm)',
+        // Let the panel shrink inside a tight vertical parent so the Generate
+        // row below never gets pushed off-screen. Content scrolls internally.
+        minHeight: 0,
+        overflow: 'hidden',
       }}
     >
       {/* Header */}

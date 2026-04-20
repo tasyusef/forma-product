@@ -277,8 +277,8 @@ export default function Composer({ sketchData, onUpdateSketch, onGenerate, inter
           onRefresh={interpretation.onRefresh}
         />
 
-        {/* Bottom bar: prompt + generate */}
-        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+        {/* Bottom bar: prompt + generate — flex-shrink 0 so it survives a tight viewport */}
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexShrink: 0 }}>
           <input
             type="text"
             value={prompt}

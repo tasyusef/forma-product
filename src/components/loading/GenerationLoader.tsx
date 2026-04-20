@@ -3,36 +3,70 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
+export type LoadingKind = 'generate-fast' | 'generate-sketch' | 'refine';
+
 interface GenerationLoaderProps {
   theme: 'light' | 'dark';
-  /** Optional override label (e.g. "Refining") for the refine path. */
+  /** Which backend path is running — drives stage pacing and the expected-time hint. */
+  kind?: LoadingKind;
+  /** Optional override label (takes precedence over kind-driven stages). */
   label?: string;
 }
 
-/**
- * Time-based stage choreography. Fal doesn't expose real progress, so we
- * rotate through plausible phases to make the wait feel purposeful rather
- * than blank. Stages advance on their own timer; if the API returns early
- * the loader unmounts mid-stage, which is fine.
- */
-const STAGES: Array<{ at: number; text: string }> = [
-  { at: 0, text: 'Interpreting composition' },
-  { at: 2200, text: 'Rendering base image' },
-  { at: 5500, text: 'Detailing scene' },
-  { at: 9000, text: 'Finalizing' },
+interface Stage {
+  at: number;
+  text: string;
+}
+
+// Stage timings are calibrated to each path's real latency so the copy
+// doesn't promise "finalizing" while Fal is still queued on a cold model.
+const STAGES_FAST: Stage[] = [
+  { at: 0, text: 'Rendering image' },
+  { at: 1500, text: 'Finalizing' },
 ];
 
-export default function GenerationLoader({ theme, label }: GenerationLoaderProps) {
+const STAGES_SKETCH: Stage[] = [
+  { at: 0, text: 'Interpreting composition' },
+  { at: 4000, text: 'Rendering base image' },
+  { at: 12000, text: 'Detailing scene' },
+  { at: 22000, text: 'Finalizing' },
+  { at: 40000, text: 'Still working — model is queued' },
+];
+
+const STAGES_REFINE: Stage[] = [
+  { at: 0, text: 'Building mask' },
+  { at: 1500, text: 'Inpainting marked regions' },
+  { at: 12000, text: 'Blending keep regions' },
+  { at: 25000, text: 'Finalizing' },
+  { at: 40000, text: 'Still working — model is queued' },
+];
+
+const HINT_BY_KIND: Record<LoadingKind, string> = {
+  'generate-fast': 'Usually ~2s',
+  'generate-sketch': 'Sketch-conditioned · usually 20–40s',
+  'refine': 'Inpainting · usually 20–40s',
+};
+
+function stagesFor(kind: LoadingKind): Stage[] {
+  if (kind === 'generate-fast') return STAGES_FAST;
+  if (kind === 'refine') return STAGES_REFINE;
+  return STAGES_SKETCH;
+}
+
+export default function GenerationLoader({ theme, kind = 'generate-sketch', label }: GenerationLoaderProps) {
+  const stages = stagesFor(kind);
   const [stageIndex, setStageIndex] = useState(0);
 
   useEffect(() => {
-    const timers = STAGES.slice(1).map((stage, i) =>
+    setStageIndex(0);
+    const timers = stages.slice(1).map((stage, i) =>
       window.setTimeout(() => setStageIndex(i + 1), stage.at)
     );
     return () => timers.forEach((t) => window.clearTimeout(t));
-  }, []);
+  }, [stages]);
 
-  const currentStage = label ? label : STAGES[stageIndex].text;
+  const currentStage = label ? label : stages[stageIndex].text;
+  const hint = HINT_BY_KIND[kind];
 
   return (
     <motion.div
@@ -141,7 +175,7 @@ export default function GenerationLoader({ theme, label }: GenerationLoaderProps
           fontFamily: 'var(--font-mono)',
         }}
       >
-        This usually takes 5–10s
+        {hint}
       </motion.span>
     </motion.div>
   );
