@@ -52,8 +52,11 @@ export default function FormaApp() {
   const [loadingKind, setLoadingKind] = useState<LoadingKind>('generate-sketch');
 
   // Hard cap on how long we'll wait for a generation/refine before giving up.
-  // Fal's ControlNet path spikes to ~150s on cold start; we allow up to 3 min.
-  const GEN_TIMEOUT_MS = 180_000;
+  // Observed cold boots of Fal's ControlNet land right around 5 min — a 300s
+  // cap fires on requests that were a few ms from returning. 10 min gives
+  // real headroom; the loader's honest "still working" copy covers the wait.
+  // /api/warmup avoids this entirely when run 30-60s before demos.
+  const GEN_TIMEOUT_MS = 600_000;
 
   // Interpretation state lives here (not inside Composer) so navigating to
   // Director and back doesn't wipe the composed master prompt or the user's
@@ -244,13 +247,18 @@ export default function FormaApp() {
   const handleDownloadCurrent = useCallback(async () => {
     const url = displayRound?.imageUrl;
     if (!url) return;
+    // Downloading a generation signals it's worth keeping — save to library
+    // first so the user can never lose the file they just asked for. Safe to
+    // call repeatedly: finalize keys on session.id so re-clicks overwrite
+    // the same entry instead of piling up duplicates.
+    finalizeSession(sessionTitle());
     const roundLabel = displayRound.type === 'sketch' ? 'sketch' : `round-${displayRound.index}`;
     try {
       await downloadImage(url, buildFilename(sessionTitle(), roundLabel));
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Download failed');
     }
-  }, [displayRound, sessionTitle, toastError]);
+  }, [displayRound, sessionTitle, finalizeSession, toastError]);
 
   const handleDownloadSaved = useCallback(
     async (saved: SavedSession) => {

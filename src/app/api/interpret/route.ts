@@ -24,8 +24,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'ANTHROPIC_API_KEY missing' }, { status: 500 });
   }
 
-  const body = (await req.json()) as InterpretRequest;
+  let body: InterpretRequest;
+  try {
+    body = (await req.json()) as InterpretRequest;
+  } catch {
+    // Aborted fetches sometimes land here with an empty body — reject cleanly
+    // instead of throwing a 500 that shows up as "failed to pipe response".
+    return NextResponse.json({ error: 'invalid body' }, { status: 400 });
+  }
   const { sketch } = body;
+
+  // Propagate client disconnect to Anthropic. Without this, aborted streams
+  // keep burning our concurrent-connection quota and subsequent interprets
+  // start hitting 429s.
+  const upstream = new AbortController();
+  req.signal.addEventListener('abort', () => upstream.abort(), { once: true });
 
   const regionDescriptions = sketch.shapes
     .filter((s) => s.type !== 'group')
@@ -63,12 +76,15 @@ Global prompt (mood, style, medium): ${sketch.textPrompt || '(none)'}
 Compose the generation prompt.`;
 
   try {
-    const stream = await anthropic.messages.stream({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 400,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
-    });
+    const stream = await anthropic.messages.stream(
+      {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 400,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userMessage }],
+      },
+      { signal: upstream.signal }
+    );
 
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
@@ -83,6 +99,11 @@ Compose the generation prompt.`;
         } catch (err) {
           controller.error(err);
         }
+      },
+      // Fires when the downstream consumer (the fetch response body) is
+      // cancelled — e.g. the client aborted. Kill the Anthropic stream too.
+      cancel() {
+        upstream.abort();
       },
     });
 

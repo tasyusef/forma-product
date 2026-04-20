@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { SketchData } from '@/lib/types';
 
-const DEBOUNCE_MS = 800;
+// 800ms was tight enough that rapid drag-resize bursts queued 5+ concurrent
+// streams before the first returned — tripping Anthropic's concurrent-conn
+// limit. 1400ms lets mid-drag edits settle before we fire.
+const DEBOUNCE_MS = 1400;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
