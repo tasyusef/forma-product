@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
 
 export const runtime = 'nodejs';
-// Vercel (Pro+) — let the warmup run long enough to finish a cold boot.
-export const maxDuration = 600;
+// Vercel Hobby caps maxDuration at 300s. The skip-ControlNet warmup path has
+// been landing in 6-227s in practice, so 300 is enough headroom for a cold
+// flux-general boot. Bump to 600 if we ever move to Pro+.
+export const maxDuration = 300;
 
 fal.config({ credentials: process.env.FAL_KEY });
 
