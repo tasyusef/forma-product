@@ -47,6 +47,15 @@ export default function FormaApp() {
     if (screen === 'library') setSavedSessions(loadAllSavedSessions());
   }, [screen]);
 
+  // Fire-and-forget Fal warmup on mount so a reviewer landing on the site
+  // gets a container warming in the background while they browse. The server
+  // dedupes with a 10-min cooldown + in-flight lock, so repeated mounts don't
+  // pile up billable generations. Silent failure is fine — real generate
+  // calls still warm on demand if this doesn't land.
+  useEffect(() => {
+    fetch('/api/warmup', { method: 'POST' }).catch(() => {});
+  }, []);
+
   // Which backend path is running while screen === 'loading'. Lets the
   // loader show copy and pacing that matches reality for that path.
   const [loadingKind, setLoadingKind] = useState<LoadingKind>('generate-sketch');

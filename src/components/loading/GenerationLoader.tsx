@@ -43,9 +43,15 @@ const STAGES_REFINE: Stage[] = [
 
 const HINT_BY_KIND: Record<LoadingKind, string> = {
   'generate-fast': 'Usually ~2s',
-  'generate-sketch': 'Sketch-conditioned · usually 20–40s',
-  'refine': 'Inpainting · usually 20–40s',
+  'generate-sketch': 'Sketch-conditioned · ~20s warm, longer cold',
+  'refine': 'Inpainting · ~20s warm, longer cold',
 };
+
+// Reassurance copy for the cold-boot path. Appears only on sketch/refine —
+// fast text-to-image almost always completes before the 18s threshold, so
+// showing this there would be a lie.
+const COLD_BOOT_HINT_KINDS = new Set<LoadingKind>(['generate-sketch', 'refine']);
+const COLD_BOOT_HINT_DELAY_MS = 18_000;
 
 function stagesFor(kind: LoadingKind): Stage[] {
   if (kind === 'generate-fast') return STAGES_FAST;
@@ -56,6 +62,7 @@ function stagesFor(kind: LoadingKind): Stage[] {
 export default function GenerationLoader({ theme, kind = 'generate-sketch', label }: GenerationLoaderProps) {
   const stages = stagesFor(kind);
   const [stageIndex, setStageIndex] = useState(0);
+  const [showColdBootHint, setShowColdBootHint] = useState(false);
 
   useEffect(() => {
     setStageIndex(0);
@@ -64,6 +71,16 @@ export default function GenerationLoader({ theme, kind = 'generate-sketch', labe
     );
     return () => timers.forEach((t) => window.clearTimeout(t));
   }, [stages]);
+
+  // Cold-boot reassurance bubble. Only mount the timer for kinds where it
+  // makes sense; reset if the kind changes so a refine after a generate
+  // gets its own timer (and doesn't inherit a stale visible state).
+  useEffect(() => {
+    setShowColdBootHint(false);
+    if (!COLD_BOOT_HINT_KINDS.has(kind)) return;
+    const t = window.setTimeout(() => setShowColdBootHint(true), COLD_BOOT_HINT_DELAY_MS);
+    return () => window.clearTimeout(t);
+  }, [kind]);
 
   const currentStage = label ? label : stages[stageIndex].text;
   const hint = HINT_BY_KIND[kind];
@@ -177,6 +194,32 @@ export default function GenerationLoader({ theme, kind = 'generate-sketch', labe
       >
         {hint}
       </motion.span>
+
+      {/* Cold-boot reassurance — fades in only once we've been loading long
+         enough that a warm path would have already returned. Sentence-case
+         copy to read as a human note rather than a second system label. */}
+      <AnimatePresence>
+        {showColdBootHint && (
+          <motion.span
+            key="cold-boot-hint"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            style={{
+              marginTop: 'calc(var(--space-2) * -1)',
+              maxWidth: 340,
+              textAlign: 'center',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-tertiary)',
+              lineHeight: 1.5,
+              fontFamily: 'var(--font-sans)',
+            }}
+          >
+            First image after a break can take a minute or two — the model is warming up. It&apos;ll be quick after this.
+          </motion.span>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
